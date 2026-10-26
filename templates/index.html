@@ -1,0 +1,479 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guess the Number Game</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <style>
+        .player-link,
+        .player-link:visited,
+        .player-link:active {
+            color: #000000;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .player-link:hover {
+            color: #000000;
+            text-decoration: underline;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay[hidden] {
+            display: none;
+        }
+
+        .player-modal {
+            width: 100%;
+            max-width: 560px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 28px;
+            border-radius: 18px;
+            background: #ffffff;
+            color: #1e293b;
+            box-shadow: 0 25px 70px rgba(0, 0, 0, 0.25);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .modal-header h2 {
+            margin: 0 0 6px;
+            font-size: 24px;
+        }
+
+        .modal-header p {
+            margin: 0;
+            color: #64748b;
+        }
+
+        .modal-close {
+            flex-shrink: 0;
+            width: 38px;
+            height: 38px;
+            border: none;
+            border-radius: 10px;
+            background: #f1f5f9;
+            color: #334155;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .modal-close:hover {
+            background: #e2e8f0;
+        }
+
+        .modal-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .modal-stat {
+            padding: 18px;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            background: #f8fafc;
+        }
+
+        .modal-stat span {
+            display: block;
+            margin-bottom: 8px;
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        .modal-stat strong {
+            font-size: 25px;
+            overflow-wrap: anywhere;
+        }
+
+        .modal-stat.personal-best-stat {
+            grid-column: 1 / -1;
+            background: #eff6ff;
+            border-color: #bfdbfe;
+        }
+
+        .modal-footer {
+            margin-top: 22px;
+            text-align: right;
+        }
+
+        .modal-done {
+            padding: 11px 22px;
+            border: none;
+            border-radius: 9px;
+            background: #2563eb;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .modal-done:hover {
+            background: #1d4ed8;
+        }
+
+        .modal-error {
+            padding: 14px;
+            border-radius: 10px;
+            background: #fef2f2;
+            color: #b91c1c;
+        }
+
+        @media (max-width: 480px) {
+            .player-modal {
+                padding: 20px;
+            }
+
+            .modal-stats-grid {
+                gap: 10px;
+            }
+
+            .modal-stat {
+                padding: 13px;
+            }
+
+            .modal-stat strong {
+                font-size: 21px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="container">
+
+        <!-- HEADER -->
+        <header class="hero">
+            <div class="game-icon" aria-hidden="true">?</div>
+            <h1>Guess the Number</h1>
+            <p>Think carefully, trust your instincts, and find the secret number!</p>
+            <span class="range-badge">NUMBER RANGE: 1–99</span>
+        </header>
+
+        <!-- GAME SECTION -->
+        <section class="game-card" aria-labelledby="gameHeading">
+            <div class="section-heading">
+                <h2 id="gameHeading">Let's Play!</h2>
+                <p>Guess the secret number using the hints provided.</p>
+            </div>
+
+            {% if message %}
+            <div class="message {{ message_type }}" role="status" aria-live="polite">
+                {{ message }}
+            </div>
+            {% endif %}
+
+            {% if not game_started %}
+            <form action="{{ url_for('start_game') }}" method="POST">
+                <label for="player_name">Your name</label>
+                <input
+                    type="text"
+                    id="player_name"
+                    name="player_name"
+                    maxlength="100"
+                    placeholder="Enter your name"
+                    autocomplete="name"
+                    required
+                >
+                <button type="submit" class="primary-button">Start Game</button>
+            </form>
+            {% else %}
+            <div class="player-info">
+                <span>Player</span>
+                <strong>{{ player_name }}</strong>
+            </div>
+
+            <div class="stats">
+                <div class="stat-box">
+                    <span>Attempts Used</span>
+                    <strong>{{ attempts }} / {{ max_attempts }}</strong>
+                </div>
+
+                <div class="stat-box">
+                    <span>Attempts Left</span>
+                    <strong>{{ attempts_left }}</strong>
+                </div>
+            </div>
+
+            <div
+                class="attempt-progress"
+                role="progressbar"
+                aria-label="Attempts used"
+                aria-valuemin="0"
+                aria-valuemax="{{ max_attempts }}"
+                aria-valuenow="{{ attempts }}"
+            >
+                <div
+                    class="attempt-progress-fill"
+                    style="width: {{ attempts / max_attempts * 100 }}%;">
+                </div>
+            </div>
+
+            {% if not game_over %}
+            <form action="{{ url_for('guess') }}" method="POST">
+                <label for="guess">Enter your guess</label>
+                <input
+                    type="number"
+                    id="guess"
+                    name="guess"
+                    min="{{ min_number }}"
+                    max="{{ max_number }}"
+                    step="1"
+                    placeholder="Choose a number"
+                    required
+                    autofocus
+                >
+                <button type="submit" class="primary-button">Submit Guess</button>
+            </form>
+            {% else %}
+            <div class="completed-message">
+                <h3>Game completed!</h3>
+                <p>Your final result is shown above.</p>
+            </div>
+            {% endif %}
+
+            <form action="{{ url_for('new_game') }}" method="POST">
+                <button type="submit" class="secondary-button">
+                    New Game / Change Player
+                </button>
+            </form>
+            {% endif %}
+        </section>
+
+        <!-- LEADERBOARD -->
+        <section class="history-card" aria-labelledby="leaderboardHeading">
+            <div class="section-heading">
+                <h2 id="leaderboardHeading">Leaderboard</h2>
+                <p>Click any player's name to view their statistics</p>
+            </div>
+
+            {% if leaderboard_error %}
+            <div class="message error" role="alert">{{ leaderboard_error }}</div>
+            {% elif leaderboard %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Rank</th>
+                            <th scope="col">Player</th>
+                            <th scope="col">Best Attempts</th>
+                            <th scope="col">Secret Number</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for player in leaderboard %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>
+                                <a
+                                    class="player-link"
+                                    href="{{ url_for('index', player=player.player_name) }}"
+                                    aria-haspopup="dialog"
+                                >{{ player.player_name }}</a>
+                            </td>
+                            <td>{{ player.best_attempts }} / {{ max_attempts }}</td>
+                            <td>{{ player.best_secret_number }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No winning scores yet.</p>
+                <span>Win a game to appear on the leaderboard.</span>
+            </div>
+            {% endif %}
+        </section>
+
+        <!-- GAME HISTORY -->
+        <section class="history-card" aria-labelledby="historyHeading">
+            <div class="section-heading">
+                <h2 id="historyHeading">Game History</h2>
+                <p>Your 20 most recent completed games</p>
+            </div>
+
+            {% if history_error %}
+            <div class="message error" role="alert">{{ history_error }}</div>
+            {% elif history %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">S.No</th>
+                            <th scope="col">Player</th>
+                            <th scope="col">Secret Number</th>
+                            <th scope="col">Attempts</th>
+                            <th scope="col">Result</th>
+                            <th scope="col">Played At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for game in history %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ game.player_name }}</td>
+                            <td>{{ game.secret_number }}</td>
+                            <td>{{ game.attempts }} / {{ max_attempts }}</td>
+                            <td>
+                                <span class="result-badge {{ game.result|lower }}">
+                                    {{ game.result }}
+                                </span>
+                            </td>
+                            <td>
+                                {{ game.played_at.strftime('%d %b %Y, %I:%M %p') if game.played_at else 'N/A' }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No game history yet.</p>
+                <span>Complete a game to see its result here.</span>
+            </div>
+            {% endif %}
+        </section>
+
+        <footer>
+            <p>Guess the Number Game · Built with Python, Flask and MySQL</p>
+        </footer>
+
+    </main>
+
+    <!-- PLAYER STATISTICS POPUP -->
+    <div
+        id="playerStatsModal"
+        class="modal-overlay"
+        {% if not selected_player %}hidden{% endif %}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modalPlayerName"
+    >
+        <section class="player-modal">
+            <div class="modal-header">
+                <div>
+                    <h2 id="modalPlayerName" tabindex="-1">
+                        {{ selected_player or 'Player Statistics' }}
+                    </h2>
+                    <p>Performance overview</p>
+                </div>
+
+                <button
+                    type="button"
+                    class="modal-close"
+                    id="closePlayerModal"
+                    aria-label="Close statistics popup"
+                >&times;</button>
+            </div>
+
+            {% if selected_player and player_stats %}
+            <div class="modal-stats-grid">
+                <div class="modal-stat">
+                    <span>Games Played</span>
+                    <strong>{{ player_stats.games_played }}</strong>
+                </div>
+
+                <div class="modal-stat">
+                    <span>Games Won</span>
+                    <strong>{{ player_stats.wins }}</strong>
+                </div>
+
+                <div class="modal-stat">
+                    <span>Games Failed</span>
+                    <strong>{{ player_stats.failures }}</strong>
+                </div>
+
+                <div class="modal-stat">
+                    <span>Win Rate</span>
+                    <strong>{{ player_stats.win_rate }}%</strong>
+                </div>
+
+                <div class="modal-stat personal-best-stat">
+                    <span>Personal Best</span>
+                    <strong>
+                        {% if player_stats.best_attempts is not none %}
+                            {{ player_stats.best_attempts }} attempts
+                        {% else %}
+                            Not yet achieved
+                        {% endif %}
+                    </strong>
+                </div>
+            </div>
+            {% elif selected_player %}
+            <p class="modal-error" role="alert">
+                Statistics could not be loaded for this player.
+            </p>
+            {% endif %}
+
+            <div class="modal-footer">
+                <button type="button" class="modal-done" id="donePlayerModal">
+                    Close
+                </button>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const playerModal = document.getElementById("playerStatsModal");
+        const closeModalButton = document.getElementById("closePlayerModal");
+        const doneModalButton = document.getElementById("donePlayerModal");
+        const modalTitle = document.getElementById("modalPlayerName");
+
+        function closePlayerModal() {
+            playerModal.hidden = true;
+
+            const url = new URL(window.location.href);
+            url.searchParams.delete("player");
+
+            window.history.replaceState(
+                {},
+                "",
+                url.pathname + url.search + url.hash
+            );
+        }
+
+        closeModalButton.addEventListener("click", closePlayerModal);
+        doneModalButton.addEventListener("click", closePlayerModal);
+
+        playerModal.addEventListener("click", function (event) {
+            if (event.target === playerModal) {
+                closePlayerModal();
+            }
+        });
+
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape" && !playerModal.hidden) {
+                closePlayerModal();
+            }
+        });
+
+        if (!playerModal.hidden) {
+            modalTitle.focus();
+        }
+    </script>
+</body>
+</html>
